@@ -162,6 +162,41 @@ fn caption_labels_do_not_need_a_digit() {
     assert!(s.doc.plain_text(StoryRef::Body).ends_with("See Photo Plate I"), "{}", s.doc.plain_text(StoryRef::Body));
 }
 
+/// #4411: captions restyled with a style based on Caption (`Caption Table`) are still captions,
+/// after a DOCX save and reopen too: every `tableX` caption is a cross-reference target and in
+/// the table of figures. A paragraph in a style not based on Caption is not.
+#[test]
+fn captions_in_a_style_based_on_caption() {
+    let mut s = Session::new(wordcraft_doc::Document::from_text("T1\nT2\nT3\nT4\nT5\nNote\nSee "));
+    for k in 1..=5 {
+        s.run("select.text", &json!({"text": format!("T{k}")})).unwrap();
+        s.run("references.caption", &json!({"label": "tableX", "text": format!("Row {k}")})).unwrap();
+    }
+    s.run("select.text", &json!({"text": "Note"})).unwrap();
+    s.run("references.caption", &json!({"label": "tableX", "text": "Aside"})).unwrap();
+    s.run("styles.create", &json!({"name": "Caption Table", "basedOn": "Caption", "fromSelection": false})).unwrap();
+    s.run("styles.create", &json!({"name": "Aside", "fromSelection": false})).unwrap();
+    let style = |s: &Session, name: &str| s.doc.styles.find(name).map(|st| st.id.clone());
+    let (table, aside) = (style(&s, "Caption Table"), style(&s, "Aside"));
+    for path in s.doc.para_paths(StoryRef::Body) {
+        let p = s.doc.para_mut(StoryRef::Body, &path).unwrap();
+        let text = p.plain_text();
+        if ["tableX 1", "tableX 2", "tableX 3"].iter().any(|c| text.starts_with(c)) {
+            p.props.style = table.clone();
+        } else if text.starts_with("tableX 6") {
+            p.props.style = aside.clone();
+        }
+    }
+    let bytes = wordcraft_docx::write(&s.doc).expect("docx write");
+    let mut s = Session::new(wordcraft_docx::read(&bytes).expect("docx read"));
+    let want: Vec<String> = (1..=5).map(|k| format!("tableX {k}: Row {k}")).collect();
+    assert_eq!(s.run("insert.crossReference", &json!({"to": "label:tableX"})).unwrap(), json!(want));
+    assert_eq!(caption_labels(&s), ["tableX"]);
+    s.run("caret.docEnd", &json!({})).unwrap();
+    s.run("references.tableOfFigures", &json!({"label": "tableX", "pageNumbers": false})).unwrap();
+    assert_eq!(list_entries(&s).into_iter().map(|(t, _)| t).collect::<Vec<_>>(), want);
+}
+
 /// The entries of every generated list, in order, with their last tab stop's leader.
 fn list_entries(s: &Session) -> Vec<(String, Option<TabLeader>)> {
     s.doc
