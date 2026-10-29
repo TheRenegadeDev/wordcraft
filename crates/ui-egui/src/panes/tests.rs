@@ -309,6 +309,54 @@ fn pane_bodies_fit_the_narrowest_pane() {
     assert!(wide.is_empty(), "wider than the pane: {wide:?}");
 }
 
+/// #4482: at the 200 pt minimum width every Navigation tab is whole, in the longest labels. The
+/// fixture puts the longest translation of each tab in craft-i18n (at `craft-i18n.rev`) side by
+/// side; with the catalogs built in, every interface language is checked too.
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn navigation_tabs_fit_the_narrowest_pane_in_every_language() {
+    use egui_kittest::kittest::Queryable;
+    // 200 pt less the 10 pt body margins and the frame's 1 pt strokes.
+    const BODY: f32 = 178.0;
+    let longest = crate::i18n::fixture_lang("x-fixture", "\tHeadings\tÜberschriften\n\tPages\tСтраницы\n\tResults\tEredmények\n");
+    let mut langs = vec![longest];
+    if crate::i18n::catalogs_embedded() {
+        // Chinese, Japanese and Korean need a craft-fonts build (their labels are short anyway).
+        let cjk = !wordcraft_fonts::ui_cjk_fonts(false).is_empty();
+        langs.extend(crate::i18n::Lang::all().filter(|l| cjk || !l.uses_cjk()));
+    }
+    for lang in langs {
+        let app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello")), crate::Services::default());
+        let body = std::rc::Rc::new(std::cell::Cell::new(egui::Rect::NOTHING));
+        let seen = body.clone();
+        let mut fonts = false;
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(400.0, 600.0)).build_ui_state(
+            move |ui, app: &mut crate::WordApp| {
+                crate::i18n::set_current(lang);
+                // Fonts take effect the frame after they are installed.
+                if !fonts {
+                    crate::theme::install_fonts_language(ui.ctx(), lang.prefers_hans(), lang.prefers_korean());
+                    fonts = true;
+                    return;
+                }
+                let r = ui.allocate_ui_with_layout(vec2(BODY, 600.0), egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.set_max_width(BODY);
+                    Content { app: &mut *app }.body(ui, &Pane::Navigation);
+                });
+                seen.set(egui::Rect::from_min_size(r.response.rect.min, vec2(BODY, 600.0)));
+            },
+            app,
+        );
+        h.run_steps(3);
+        for tab in ["Headings", "Pages", "Results"] {
+            let label = crate::i18n::tr(lang, tab);
+            let r = h.get_by_label(label).rect();
+            assert!(body.get().expand(0.5).contains_rect(r), "{}: {label} at {r:?} is cut off by the {BODY} pt body", lang.code());
+        }
+    }
+    crate::i18n::set_current(crate::i18n::Lang::EN);
+}
+
 /// A pane other than Styles floated from its menu comes back floating, at the same rect, after
 /// a restart; junk in `panePlaces` reads as the defaults (#1756).
 #[test]
