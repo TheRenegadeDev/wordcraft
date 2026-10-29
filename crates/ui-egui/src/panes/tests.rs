@@ -311,7 +311,8 @@ fn pane_bodies_fit_the_narrowest_pane() {
 
 /// #4482: at the 200 pt minimum width every Navigation tab is whole, in the longest labels. The
 /// fixture puts the longest translation of each tab in craft-i18n (at `craft-i18n.rev`) side by
-/// side; with the catalogs built in, every interface language is checked too.
+/// side; with the catalogs built in, every interface language is checked too, and none may have
+/// a wider tab than the fixture (else the fixture needs the new longest label).
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn navigation_tabs_fit_the_narrowest_pane_in_every_language() {
@@ -319,13 +320,14 @@ fn navigation_tabs_fit_the_narrowest_pane_in_every_language() {
     // 200 pt less the 10 pt body margins and the frame's 1 pt strokes.
     const BODY: f32 = 178.0;
     let longest = crate::i18n::fixture_lang("x-fixture", "\tHeadings\tÜberschriften\n\tPages\tСтраницы\n\tResults\tEredmények\n");
+    let mut widest = Vec::new();
     let mut langs = vec![longest];
     if crate::i18n::catalogs_embedded() {
         // Chinese, Japanese and Korean need a craft-fonts build (their labels are short anyway).
         let cjk = !wordcraft_fonts::ui_cjk_fonts(false).is_empty();
         langs.extend(crate::i18n::Lang::all().filter(|l| cjk || !l.uses_cjk()));
     }
-    for lang in langs {
+    for (n, lang) in langs.into_iter().enumerate() {
         let app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello")), crate::Services::default());
         let body = std::rc::Rc::new(std::cell::Cell::new(egui::Rect::NOTHING));
         let seen = body.clone();
@@ -335,6 +337,7 @@ fn navigation_tabs_fit_the_narrowest_pane_in_every_language() {
                 crate::i18n::set_current(lang);
                 // Fonts take effect the frame after they are installed.
                 if !fonts {
+                    crate::theme::apply(ui.ctx(), crate::theme::Appearance::Light);
                     crate::theme::install_fonts_language(ui.ctx(), lang.prefers_hans(), lang.prefers_korean());
                     fonts = true;
                     return;
@@ -348,10 +351,17 @@ fn navigation_tabs_fit_the_narrowest_pane_in_every_language() {
             app,
         );
         h.run_steps(3);
-        for tab in ["Headings", "Pages", "Results"] {
+        for (i, tab) in ["Headings", "Pages", "Results"].into_iter().enumerate() {
             let label = crate::i18n::tr(lang, tab);
             let r = h.get_by_label(label).rect();
             assert!(body.get().expand(0.5).contains_rect(r), "{}: {label} at {r:?} is cut off by the {BODY} pt body", lang.code());
+            let font = egui::TextStyle::Button.resolve(&h.ctx.global_style());
+            let text = h.ctx.fonts_mut(|f| f.layout_no_wrap(label.to_string(), font, egui::Color32::WHITE).size().x);
+            if n == 0 {
+                widest.push(text);
+            } else {
+                assert!(text <= widest[i] + 0.5, "{}: {label} is wider than the fixture's {tab} label", lang.code());
+            }
         }
     }
     crate::i18n::set_current(crate::i18n::Lang::EN);
