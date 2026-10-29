@@ -317,6 +317,14 @@ fn pane_bodies_fit_the_narrowest_pane() {
 #[cfg(not(target_arch = "wasm32"))]
 fn navigation_tabs_fit_the_narrowest_pane_in_every_language() {
     use egui_kittest::kittest::Queryable;
+    // The language is thread-local: put English back even when an assertion fails.
+    struct English;
+    impl Drop for English {
+        fn drop(&mut self) {
+            crate::i18n::set_current(crate::i18n::Lang::EN);
+        }
+    }
+    let _english = English;
     // 200 pt less the 10 pt body margins and the frame's 1 pt strokes.
     const BODY: f32 = 178.0;
     let longest = crate::i18n::fixture_lang("x-fixture", "\tHeadings\tÜberschriften\n\tPages\tСтраницы\n\tResults\tEredmények\n");
@@ -367,7 +375,6 @@ fn navigation_tabs_fit_the_narrowest_pane_in_every_language() {
             }
         }
     }
-    crate::i18n::set_current(crate::i18n::Lang::EN);
 }
 
 /// A pane other than Styles floated from its menu comes back floating, at the same rect, after
