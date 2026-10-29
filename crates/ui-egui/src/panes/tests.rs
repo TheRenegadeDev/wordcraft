@@ -357,6 +357,9 @@ fn navigation_tabs_fit_the_narrowest_pane_in_every_language() {
             assert!(body.get().expand(0.5).contains_rect(r), "{}: {label} at {r:?} is cut off by the {BODY} pt body", lang.code());
             let font = egui::TextStyle::Button.resolve(&h.ctx.global_style());
             let text = h.ctx.fonts_mut(|f| f.layout_no_wrap(label.to_string(), font, egui::Color32::WHITE).size().x);
+            // A tab that shrank to fit would have elided or wrapped its label inside a rect that
+            // still fits the body.
+            assert!(r.width() + 0.5 >= text, "{}: {label} is {:.1} pt wide, narrower than its {text:.1} pt label", lang.code(), r.width());
             if n == 0 {
                 widest.push(text);
             } else {
