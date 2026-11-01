@@ -371,7 +371,11 @@ fn navigation_tabs_fit_the_narrowest_pane_in_every_language() {
             if n == 0 {
                 widest.push(text);
             } else {
-                assert!(text <= widest[i] + 0.5, "{}: {label} is wider than the fixture's {tab} label", lang.code());
+                assert!(
+                    text <= widest[i] + 0.5,
+                    "{}: {label} is wider than the fixture's {tab} label; put {label:?} in the fixture as the longest {tab}",
+                    lang.code()
+                );
             }
         }
     }
